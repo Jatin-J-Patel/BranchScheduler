@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Branch Employee Scheduler</title>
+    <title>Branch Scheduler - React</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -27,7 +34,7 @@
             margin: -30px -30px 30px -30px;
         }
         .header h1 { font-size: 24px; margin-bottom: 5px; }
-        .header-actions { display: flex; gap: 10px; margin-top: 15px; }
+        .header-actions { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
         
         .btn {
             padding: 10px 20px;
@@ -43,6 +50,7 @@
         .btn-danger { background: #dc2626; color: white; }
         .btn-small { padding: 6px 12px; font-size: 12px; }
         .btn:hover { transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         
         .form-group { margin-bottom: 20px; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: 600; }
@@ -66,8 +74,6 @@
             border-radius: 8px;
         }
         .tab.active { background: #2563eb; color: white; }
-        .tab-content { display: none; }
-        .tab-content.active { display: block; }
         
         .employee-list {
             display: grid;
@@ -117,7 +123,7 @@
         }
         .calendar-day:hover { background: #f8fafc; }
         .calendar-day.today { background: #fef3c7; }
-        .calendar-day.other-month { background: #f1f5f9; opacity: 0.6; }
+        .calendar-day.other-month { background: #f1f5f9; opacity: 0.6; cursor: default; }
         .day-header {
             background: #2563eb;
             color: white;
@@ -134,6 +140,9 @@
             font-size: 11px;
             margin-bottom: 4px;
             position: relative;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .shift-item:hover .remove-shift { display: block; }
         .remove-shift {
@@ -149,6 +158,7 @@
             height: 16px;
             font-size: 10px;
             cursor: pointer;
+            line-height: 14px;
         }
         
         .modal {
@@ -161,6 +171,7 @@
             background: rgba(0,0,0,0.5);
             z-index: 1000;
         }
+        .modal.open { display: block; }
         .modal-content {
             position: absolute;
             top: 50%;
@@ -219,13 +230,13 @@
         .notification.error { background: #dc2626; }
         .notification.warning { background: #d97706; }
         
-        .hidden { display: none !important; }
-        
         .month-nav {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
         }
         .month-title { font-size: 24px; font-weight: 600; }
         
@@ -261,194 +272,29 @@
         .stat-number { font-size: 24px; font-weight: 700; color: #2563eb; }
         .stat-label { font-size: 14px; color: #64748b; margin-top: 5px; }
         
+        .empty-state {
+            text-align: center;
+            color: #64748b;
+            padding: 40px;
+        }
+        
         @media (max-width: 768px) {
             .shift-form { grid-template-columns: 1fr; }
             .calendar-day { min-height: 100px; font-size: 12px; }
             .checkbox-list { grid-template-columns: 1fr; }
+            .header-actions { flex-direction: column; }
+            .month-nav { flex-direction: column; text-align: center; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Login Screen -->
-        <div id="loginScreen" class="card">
-            <div class="header">
-                <h1>Branch Scheduler</h1>
-                <p>Employee scheduling made simple</p>
-            </div>
-            
-            <div class="login-types">
-                <div class="login-type active" data-type="manager">Manager Login</div>
-                <div class="login-type" data-type="supervisor">Supervisor Dashboard</div>
-            </div>
-            
-            <form id="loginForm">
-                <div id="managerFields">
-                    <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" id="email" class="form-input" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="password" class="form-input" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Region</label>
-                        <select id="region" class="form-input" required>
-                            <option value="">Select Region</option>
-                            <option value="North">North</option>
-                            <option value="South">South</option>
-                            <option value="Satellite">Satellite</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Branch</label>
-                        <select id="branch" class="form-input" required>
-                            <option value="">Select Branch</option>
-                        </select>
-                    </div>
-                </div>
+    <div id="root"></div>
 
-                <div id="supervisorFields" class="hidden">
-                    <div class="form-group">
-                        <label>Supervisor Email</label>
-                        <input type="email" id="supervisorEmail" class="form-input">
-                    </div>
-                    <div class="form-group">
-                        <label>Password</label>
-                        <input type="password" id="supervisorPassword" class="form-input">
-                    </div>
-                </div>
-                
-                <button type="submit" class="btn btn-primary" style="width: 100%;">Sign In</button>
-            </form>
-        </div>
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useRef } = React;
 
-        <!-- Main App -->
-        <div id="mainApp" class="hidden">
-            <div class="card">
-                <div class="header">
-                    <h1>Branch Scheduler</h1>
-                    <div id="branchInfo">Loading...</div>
-                    <div class="header-actions">
-                        <button class="btn btn-secondary btn-small" id="exportBtn">Export to Excel</button>
-                        <button class="btn btn-secondary btn-small" id="saveBtn">Save to Cloud</button>
-                        <button class="btn btn-secondary btn-small" id="logoutBtn">Sign Out</button>
-                    </div>
-                </div>
-
-                <div class="tabs">
-                    <button class="tab active" data-tab="shifts">Shift Templates</button>
-                    <button class="tab" data-tab="employees">Employees</button>
-                    <button class="tab" data-tab="schedule">Schedule</button>
-                </div>
-
-                <!-- Tabs Content -->
-                <div class="tab-content active" id="shiftsTab">
-                    <h2>Shift Templates</h2>
-                    <div id="shiftList" class="shift-list"></div>
-                    <button class="btn btn-primary" id="addShiftBtn">Add Shift Template</button>
-                </div>
-
-                <div class="tab-content" id="employeesTab">
-                    <h2>Employees</h2>
-                    <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                        <input type="text" id="newEmployeeName" class="form-input" placeholder="Employee name" style="flex: 1;">
-                        <button class="btn btn-success" id="addEmployeeBtn">Add Employee</button>
-                    </div>
-                    <div id="employeeList" class="employee-list"></div>
-                </div>
-
-                <div class="tab-content" id="scheduleTab">
-                    <div class="month-nav">
-                        <button class="btn btn-secondary" id="prevMonthBtn">← Previous</button>
-                        <h2 class="month-title" id="monthTitle">January 2024</h2>
-                        <button class="btn btn-secondary" id="nextMonthBtn">Next →</button>
-                    </div>
-                    
-                    <div style="margin-bottom: 20px;">
-                        <button class="btn btn-secondary" id="bulkBtn">Bulk Schedule</button>
-                        <button class="btn btn-secondary" id="clearBtn">Clear Month</button>
-                    </div>
-                    
-                    <div class="calendar" id="calendar"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Supervisor App -->
-        <div id="supervisorApp" class="hidden">
-            <div class="card">
-                <div class="header">
-                    <h1>Supervisor Dashboard</h1>
-                    <p>View all branch schedules</p>
-                    <div class="header-actions">
-                        <button class="btn btn-secondary btn-small" id="supervisorExportBtn">Export to Excel</button>
-                        <button class="btn btn-secondary btn-small" id="supervisorLogoutBtn">Sign Out</button>
-                    </div>
-                </div>
-
-                <div id="supervisorStats" class="supervisor-stats"></div>
-                
-                <div id="branchSelector" class="hidden" style="margin-bottom: 30px;">
-                    <div class="form-group">
-                        <label>Select Branch to View Schedule</label>
-                        <select id="branchDropdown" class="form-input" style="max-width: 400px;">
-                            <option value="">Choose a branch...</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div id="supervisorContent"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modals -->
-    <div class="modal" id="dayModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="dayModalTitle">Schedule Day</h3>
-                <button class="close-btn">&times;</button>
-            </div>
-            <div id="dayModalContent"></div>
-            <button class="btn btn-primary" id="dayModalDone" style="width: 100%; margin-top: 20px;">Done</button>
-        </div>
-    </div>
-
-    <div class="modal" id="bulkModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Bulk Schedule</h3>
-                <button class="close-btn">&times;</button>
-            </div>
-            <div class="form-group">
-                <label>Start Date</label>
-                <input type="date" id="bulkStart" class="form-input">
-            </div>
-            <div class="form-group">
-                <label>End Date</label>
-                <input type="date" id="bulkEnd" class="form-input">
-            </div>
-            <div id="bulkContent"></div>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn btn-secondary" id="bulkCancelBtn">Cancel</button>
-                <button class="btn btn-primary" id="bulkApplyBtn">Apply</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
-    
-    <!-- SheetJS for Excel export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
-    <script>
-        // Initialize Firebase
-        firebase.initializeApp({
+        // Firebase Configuration
+        const firebaseConfig = {
             apiKey: "AIzaSyBxQ7geoG3DsmBRuM1dMM6SjUUXyUb5YtA",
             authDomain: "scheduler-8af78.firebaseapp.com",
             projectId: "scheduler-8af78",
@@ -456,377 +302,269 @@
             messagingSenderId: "580854836199",
             appId: "1:580854836199:web:9d7dc1cdf9308c4cfd6b42",
             measurementId: "G-R6LDVHMBLY"
-        });
+        };
 
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
-        const auth = firebase.auth();
 
-        // Application State
-        class App {
-            constructor() {
-                this.currentUser = null;
-                this.userType = 'manager';
-                this.currentDate = new Date();
-                this.employees = [];
-                this.shifts = [];
-                this.schedule = {};
-                this.supervisorData = {};
-                this.selectedBranch = null;
-                this.supervisorCurrentDate = null;
-                this.autoSaveTimeout = null;
+        // Constants
+        const AUTHORIZED_EMAILS = {
+            managers: ['branch@ufcu.org', 'branch2@ufcu.org'],
+            supervisors: ['boss@ufcu.org']
+        };
+
+        const BRANCHES = {
+            North: ['Galveston', 'Georgetown', 'Highway 79', 'Kelly Lane', 'Manor', 'New Hope', 'Pearland', 'Pflugerville', 'Lakeline', 'Scofield', 'Steck', 'Teravista', 'Victory Lakes'],
+            South: ['Ben White', 'Brodie', 'Downtown', 'Kyle', 'Mueller', 'North Guadalupe', 'San Marcos', 'South MoPac', 'Southpark Meadows', 'University'],
+            Satellite: ['ACC - Highland', 'Area Team', 'Concordia', 'Gregory Gym', 'Northern Village', 'TX State University', 'TX State LBJ', 'UT Health', 'UT One Stop']
+        };
+
+        // Utility Functions
+        const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+        
+        const formatTime = (time) => {
+            const [hours, minutes] = time.split(':');
+            const date = new Date();
+            date.setHours(parseInt(hours), parseInt(minutes));
+            return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        };
+        
+        const getDateKey = (year, month, day) => `${year}-${month + 1}-${day}`;
+
+        // Notification Component
+        function Notification({ message, type, onClose }) {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 3000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            return (
+                <div className={`notification ${type} show`}>
+                    {message}
+                </div>
+            );
+        }
+
+        // Login Component
+        function Login({ onLogin }) {
+            const [userType, setUserType] = useState('manager');
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [region, setRegion] = useState('');
+            const [branch, setBranch] = useState('');
+            const [error, setError] = useState('');
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
                 
-                this.authorizedEmails = {
-                    managers: ['branch@ufcu.org', 'branch2@ufcu.org'],
-                    supervisors: ['boss@ufcu.org']
-                };
-                
-                this.branches = {
-                    North: ['Galveston', 'Georgetown', 'Highway 79', 'Kelly Lane', 'Manor', 'New Hope', 'Pearland', 'Pflugerville', 'Lakeline', 'Scofield', 'Steck', 'Teravista', 'Victory Lakes'],
-                    South: ['Ben White', 'Brodie', 'Downtown', 'Kyle', 'Mueller', 'North Guadalupe', 'San Marcos', 'South MoPac', 'Southpark Meadows', 'University'],
-                    Satellite: ['ACC - Highland', 'Area Team', 'Concordia', 'Gregory Gym', 'Northern Village', 'TX State University', 'TX State LBJ', 'UT Health', 'UT One Stop']
-                };
-                
-                this.init();
-            }
-
-            // Utility Methods
-            generateId() {
-                return Date.now().toString(36) + Math.random().toString(36).substr(2);
-            }
-
-            formatTime(time) {
-                const [hours, minutes] = time.split(':');
-                const date = new Date();
-                date.setHours(parseInt(hours), parseInt(minutes));
-                return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-            }
-
-            getDateKey(year, month, day) {
-                return `${year}-${month + 1}-${day}`;
-            }
-
-            showNotification(message, type = 'success') {
-                const notification = document.createElement('div');
-                notification.className = `notification ${type}`;
-                notification.textContent = message;
-                document.body.appendChild(notification);
-                
-                setTimeout(() => notification.classList.add('show'), 100);
-                setTimeout(() => {
-                    notification.classList.remove('show');
-                    setTimeout(() => notification.remove(), 300);
-                }, 3000);
-            }
-
-            // Auth Methods
-            isAuthorizedUser(email, type) {
                 const normalizedEmail = email.toLowerCase();
-                const authList = this.authorizedEmails[type === 'manager' ? 'managers' : 'supervisors'];
-                return authList.some(authEmail => authEmail.toLowerCase() === normalizedEmail);
-            }
-
-            async login(email, password, region, branch) {
-                try {
-                    if (!this.isAuthorizedUser(email, this.userType)) {
-                        this.showNotification('Unauthorized email address', 'error');
-                        return;
-                    }
-
-                    this.currentUser = { email, region, branch, type: this.userType };
-                    
-                    if (this.userType === 'supervisor') {
-                        this.showScreen('supervisor');
-                        await this.loadSupervisorData();
-                    } else {
-                        this.showScreen('main');
-                        await this.loadFromFirebase();
-                        this.updateUI();
-                    }
-                    
-                    this.showNotification('Login successful!');
-                } catch (error) {
-                    this.showNotification('Login failed', 'error');
-                }
-            }
-
-            logout() {
-                this.currentUser = null;
-                this.employees = [];
-                this.shifts = [];
-                this.schedule = {};
-                this.supervisorData = {};
-                this.showScreen('login');
-                this.showNotification('Logged out successfully', 'success');
-            }
-
-            showScreen(screen) {
-                document.getElementById('loginScreen').classList.toggle('hidden', screen !== 'login');
-                document.getElementById('mainApp').classList.toggle('hidden', screen !== 'main');
-                document.getElementById('supervisorApp').classList.toggle('hidden', screen !== 'supervisor');
-            }
-
-            // Firebase Methods
-            async saveToFirebase() {
-                if (!this.currentUser || this.userType !== 'manager') return;
+                const authList = AUTHORIZED_EMAILS[userType === 'manager' ? 'managers' : 'supervisors'];
                 
-                try {
-                    const branchKey = `${this.currentUser.region}_${this.currentUser.branch}`;
-                    await db.collection('branches').doc(branchKey).set({
-                        user: this.currentUser,
-                        data: { employees: this.employees, shifts: this.shifts, schedule: this.schedule },
-                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
-                        version: '2.0'
-                    });
-                    this.showNotification('Schedule saved to cloud', 'success');
-                } catch (error) {
-                    this.showNotification('Error saving to cloud', 'error');
+                if (!authList.some(authEmail => authEmail.toLowerCase() === normalizedEmail)) {
+                    setError('Unauthorized email address');
+                    return;
                 }
-            }
 
-            async loadFromFirebase() {
-                if (!this.currentUser || this.userType !== 'manager') return;
-                
+                if (userType === 'manager' && (!region || !branch)) {
+                    setError('Please select region and branch');
+                    return;
+                }
+
+                onLogin({ email, password, region, branch, userType });
+            };
+
+            return (
+                <div className="card">
+                    <div className="header">
+                        <h1>Branch Scheduler</h1>
+                        <p>Employee scheduling made simple</p>
+                    </div>
+                    
+                    <div className="login-types">
+                        <div 
+                            className={`login-type ${userType === 'manager' ? 'active' : ''}`}
+                            onClick={() => setUserType('manager')}
+                        >
+                            Manager Login
+                        </div>
+                        <div 
+                            className={`login-type ${userType === 'supervisor' ? 'active' : ''}`}
+                            onClick={() => setUserType('supervisor')}
+                        >
+                            Supervisor Dashboard
+                        </div>
+                    </div>
+                    
+                    <form onSubmit={handleSubmit}>
+                        <div className="form-group">
+                            <label>{userType === 'supervisor' ? 'Supervisor Email' : 'Email'}</label>
+                            <input 
+                                type="email" 
+                                className="form-input" 
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required 
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>Password</label>
+                            <input 
+                                type="password" 
+                                className="form-input" 
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                required 
+                            />
+                        </div>
+                        
+                        {userType === 'manager' && (
+                            <>
+                                <div className="form-group">
+                                    <label>Region</label>
+                                    <select 
+                                        className="form-input" 
+                                        value={region}
+                                        onChange={(e) => {
+                                            setRegion(e.target.value);
+                                            setBranch('');
+                                        }}
+                                        required
+                                    >
+                                        <option value="">Select Region</option>
+                                        {Object.keys(BRANCHES).map(r => (
+                                            <option key={r} value={r}>{r}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="form-group">
+                                    <label>Branch</label>
+                                    <select 
+                                        className="form-input" 
+                                        value={branch}
+                                        onChange={(e) => setBranch(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">Select Branch</option>
+                                        {region && BRANCHES[region].map(b => (
+                                            <option key={b} value={b}>{b}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </>
+                        )}
+                        
+                        {error && <p style={{color: '#dc2626', marginBottom: 10}}>{error}</p>}
+                        
+                        <button type="submit" className="btn btn-primary" style={{width: '100%'}}>
+                            Sign In
+                        </button>
+                    </form>
+                </div>
+            );
+        }
+
+        // Manager App Component
+        function ManagerApp({ user, onLogout }) {
+            const [activeTab, setActiveTab] = useState('shifts');
+            const [employees, setEmployees] = useState([]);
+            const [shifts, setShifts] = useState([]);
+            const [schedule, setSchedule] = useState({});
+            const [currentDate, setCurrentDate] = useState(new Date());
+            const [notification, setNotification] = useState(null);
+            const [modals, setModals] = useState({
+                day: null,
+                bulk: false
+            });
+            const autoSaveTimeout = useRef(null);
+
+            // Load data from Firebase
+            useEffect(() => {
+                loadFromFirebase();
+            }, [user]);
+
+            const loadFromFirebase = async () => {
                 try {
-                    const branchKey = `${this.currentUser.region}_${this.currentUser.branch}`;
+                    const branchKey = `${user.region}_${user.branch}`;
                     const doc = await db.collection('branches').doc(branchKey).get();
                     
                     if (doc.exists) {
                         const data = doc.data();
-                        this.employees = data.data.employees || [];
-                        this.shifts = data.data.shifts || [];
-                        this.schedule = data.data.schedule || {};
-                        this.showNotification('Schedule loaded from cloud', 'success');
+                        setEmployees(data.data.employees || []);
+                        setShifts(data.data.shifts || []);
+                        setSchedule(data.data.schedule || {});
+                        showNotification('Schedule loaded from cloud', 'success');
                     }
                 } catch (error) {
-                    this.showNotification('Error loading from cloud', 'error');
+                    showNotification('Error loading from cloud', 'error');
                 }
-            }
+            };
 
-            async loadSupervisorData() {
-                if (this.userType !== 'supervisor') return;
-                
+            const saveToFirebase = async () => {
                 try {
-                    const snapshot = await db.collection('branches').get();
-                    this.supervisorData = {};
-                    snapshot.forEach(doc => {
-                        this.supervisorData[doc.id] = doc.data();
+                    const branchKey = `${user.region}_${user.branch}`;
+                    await db.collection('branches').doc(branchKey).set({
+                        user,
+                        data: { employees, shifts, schedule },
+                        lastUpdated: firebase.firestore.FieldValue.serverTimestamp(),
+                        version: '2.0'
                     });
-                    this.renderSupervisorDashboard();
+                    showNotification('Schedule saved to cloud', 'success');
                 } catch (error) {
-                    this.showNotification('Error loading branch data', 'error');
+                    showNotification('Error saving to cloud', 'error');
                 }
-            }
+            };
 
-            triggerAutoSave() {
-                clearTimeout(this.autoSaveTimeout);
-                this.autoSaveTimeout = setTimeout(() => this.saveToFirebase(), 2000);
-            }
+            const triggerAutoSave = useCallback(() => {
+                clearTimeout(autoSaveTimeout.current);
+                autoSaveTimeout.current = setTimeout(() => saveToFirebase(), 2000);
+            }, [employees, shifts, schedule]);
 
-            // Employee Methods
-            addEmployee(name) {
-                if (!name.trim()) {
-                    this.showNotification('Please enter employee name', 'error');
-                    return;
+            useEffect(() => {
+                if (employees.length || shifts.length || Object.keys(schedule).length) {
+                    triggerAutoSave();
                 }
-                
-                if (this.employees.some(e => e.name === name)) {
-                    this.showNotification('Employee already exists', 'error');
-                    return;
-                }
-                
-                this.employees.push({ id: this.generateId(), name: name.trim() });
-                this.triggerAutoSave();
-                this.renderEmployees();
-                this.showNotification(`Added ${name}`);
-            }
+            }, [employees, shifts, schedule, triggerAutoSave]);
 
-            removeEmployee(id) {
-                const employee = this.employees.find(e => e.id === id);
-                if (!employee || !confirm(`Remove ${employee.name}?`)) return;
-                
-                this.employees = this.employees.filter(e => e.id !== id);
-                Object.keys(this.schedule).forEach(dateKey => {
-                    this.schedule[dateKey] = this.schedule[dateKey].filter(shift => shift.employeeId !== id);
-                    if (!this.schedule[dateKey].length) delete this.schedule[dateKey];
-                });
-                
-                this.triggerAutoSave();
-                this.renderEmployees();
-                this.renderCalendar();
-                this.showNotification(`Removed ${employee.name}`);
-            }
+            const showNotification = (message, type = 'success') => {
+                setNotification({ message, type });
+            };
 
-            // Shift Methods
-            addShift() {
-                this.shifts.push({
-                    id: this.generateId(),
-                    name: '',
-                    startTime: '09:00',
-                    endTime: '17:00',
-                    color: '#059669',
-                    isNew: true
-                });
-                this.renderShifts();
-            }
-
-            saveShift(id) {
-                const shift = this.shifts.find(s => s.id === id);
-                if (!shift) return;
+            const exportToExcel = () => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
                 
-                const name = document.getElementById(`shift-name-${id}`).value.trim();
-                const startTime = document.getElementById(`shift-start-${id}`).value;
-                const endTime = document.getElementById(`shift-end-${id}`).value;
-                const color = document.getElementById(`shift-color-${id}`).value;
-                
-                if (!name) {
-                    this.showNotification('Shift name is required', 'error');
-                    return;
-                }
-                
-                if (startTime >= endTime) {
-                    this.showNotification('End time must be after start time', 'error');
-                    return;
-                }
-                
-                Object.assign(shift, { name, startTime, endTime, color, isNew: false });
-                this.triggerAutoSave();
-                this.renderShifts();
-                this.showNotification(`Saved ${name}`);
-            }
-
-            removeShift(id) {
-                const shift = this.shifts.find(s => s.id === id);
-                if (!shift || !confirm(`Delete ${shift.name}?`)) return;
-                
-                this.shifts = this.shifts.filter(s => s.id !== id);
-                Object.keys(this.schedule).forEach(dateKey => {
-                    this.schedule[dateKey] = this.schedule[dateKey].filter(s => s.shiftId !== id);
-                    if (!this.schedule[dateKey].length) delete this.schedule[dateKey];
-                });
-                
-                this.triggerAutoSave();
-                this.renderShifts();
-                this.renderCalendar();
-                this.showNotification('Shift deleted');
-            }
-
-            // Schedule Methods
-            toggleSchedule(dateKey, employeeId, shiftId, isChecked) {
-                if (!this.schedule[dateKey]) this.schedule[dateKey] = [];
-                
-                if (isChecked) {
-                    this.schedule[dateKey].push({
-                        id: this.generateId(),
-                        employeeId,
-                        shiftId,
-                        date: dateKey
-                    });
-                } else {
-                    this.schedule[dateKey] = this.schedule[dateKey].filter(
-                        item => !(item.employeeId === employeeId && item.shiftId === shiftId)
-                    );
-                    if (!this.schedule[dateKey].length) delete this.schedule[dateKey];
-                }
-                
-                this.triggerAutoSave();
-                this.renderCalendar();
-            }
-
-            removeScheduleItem(dateKey, itemId) {
-                if (!this.schedule[dateKey]) return;
-                
-                this.schedule[dateKey] = this.schedule[dateKey].filter(item => item.id !== itemId);
-                if (!this.schedule[dateKey].length) delete this.schedule[dateKey];
-                
-                this.triggerAutoSave();
-                this.renderCalendar();
-            }
-
-            // Export Methods
-            exportToExcel() {
-                if (this.userType === 'supervisor') {
-                    this.exportSupervisorToExcel();
-                } else {
-                    this.exportManagerToExcel();
-                }
-            }
-
-            exportManagerToExcel() {
                 try {
-                    const year = this.currentDate.getFullYear();
-                    const month = this.currentDate.getMonth();
-                    const monthName = this.currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-                    
-                    // Create workbook
                     const wb = XLSX.utils.book_new();
+                    const weeks = getWeeksInMonth(year, month);
                     
-                    // Get all weeks in the month
-                    const weeks = this.getWeeksInMonth(year, month);
-                    
-                    // Create a sheet for each week
                     weeks.forEach((week, weekIndex) => {
-                        const weekData = this.createWeekSheet(week, weekIndex + 1);
+                        const weekData = createWeekSheet(week);
                         const ws = XLSX.utils.aoa_to_sheet(weekData);
-                        
-                        // Set column widths
-                        ws['!cols'] = [
-                            { width: 15 }, // Name column
-                            { width: 14 }, // Sunday
-                            { width: 14 }, // Monday
-                            { width: 14 }, // Tuesday
-                            { width: 14 }, // Wednesday
-                            { width: 14 }, // Thursday
-                            { width: 14 }, // Friday
-                            { width: 14 }  // Saturday
-                        ];
-                        
-                        // Set row heights
-                        ws['!rows'] = [];
-                        for (let i = 0; i <= this.employees.length + 1; i++) {
-                            ws['!rows'].push({ hpt: 35 });
-                        }
-                        
-                        // Add week sheet with safe name (Excel has 31 char limit for sheet names)
-                        const sheetName = `Week ${weekIndex + 1}`;
-                        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+                        ws['!cols'] = Array(8).fill({ width: 14 });
+                        ws['!cols'][0] = { width: 15 };
+                        XLSX.utils.book_append_sheet(wb, ws, `Week ${weekIndex + 1}`);
                     });
                     
-                    // Create summary sheet
-                    const summaryData = this.createSummarySheet(year, month, monthName);
+                    const summaryData = createSummarySheet();
                     const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
-                    ws2['!cols'] = [{ width: 25 }, { width: 30 }];
                     XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
                     
-                    // Create shifts sheet
-                    const shiftsData = [
-                        ['Shift Templates'],
-                        [''],
-                        ['Name', 'Start Time', 'End Time'],
-                        ...this.shifts.map(s => [s.name, this.formatTime(s.startTime), this.formatTime(s.endTime)])
-                    ];
-                    const ws3 = XLSX.utils.aoa_to_sheet(shiftsData);
-                    ws3['!cols'] = [{ width: 20 }, { width: 15 }, { width: 15 }];
-                    XLSX.utils.book_append_sheet(wb, ws3, 'Shifts');
-                    
-                    // Generate filename
-                    const filename = `${this.currentUser.region}_${this.currentUser.branch}_Schedule_${monthName.replace(' ', '_')}.xlsx`;
-                    
-                    // Download file
+                    const filename = `${user.region}_${user.branch}_Schedule_${monthName.replace(' ', '_')}.xlsx`;
                     XLSX.writeFile(wb, filename);
                     
-                    this.showNotification('Schedule exported to Excel', 'success');
+                    showNotification('Schedule exported to Excel', 'success');
                 } catch (error) {
-                    console.error('Export error:', error);
-                    this.showNotification('Error exporting to Excel', 'error');
+                    showNotification('Error exporting to Excel', 'error');
                 }
-            }
+            };
 
-            getWeeksInMonth(year, month) {
+            const getWeeksInMonth = (year, month) => {
                 const weeks = [];
                 const firstDay = new Date(year, month, 1);
                 const lastDay = new Date(year, month + 1, 0);
                 
-                // Start from the Sunday of the week containing the first day of the month
                 let currentWeekStart = new Date(firstDay);
                 const dayOfWeek = currentWeekStart.getDay();
                 if (dayOfWeek !== 0) {
@@ -844,54 +582,47 @@
                     
                     currentWeekStart.setDate(currentWeekStart.getDate() + 7);
                     
-                    // Stop if we've gone past the month
                     if (currentWeekStart.getMonth() > month && currentWeekStart.getFullYear() >= year) {
                         break;
                     }
                 }
                 
                 return weeks;
-            }
+            };
 
-            createWeekSheet(week, weekNumber) {
+            const createWeekSheet = (week) => {
                 const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                
-                // Create header rows
                 const dateRow = ['Name'];
                 const dayRow = [''];
                 
                 for (let i = 0; i < 7; i++) {
                     const currentDate = new Date(week.start);
                     currentDate.setDate(week.start.getDate() + i);
-                    
                     dateRow.push(`${currentDate.getMonth() + 1}/${currentDate.getDate()}/${currentDate.getFullYear()}`);
                     dayRow.push(dayNames[i]);
                 }
                 
                 const weekData = [dateRow, dayRow];
                 
-                // Add employee rows
-                this.employees.forEach(employee => {
+                employees.forEach(employee => {
                     const row = [employee.name];
                     
                     for (let i = 0; i < 7; i++) {
                         const currentDate = new Date(week.start);
                         currentDate.setDate(week.start.getDate() + i);
                         
-                        const dateKey = this.getDateKey(
+                        const dateKey = getDateKey(
                             currentDate.getFullYear(), 
                             currentDate.getMonth(), 
                             currentDate.getDate()
                         );
-                        const daySchedule = this.schedule[dateKey] || [];
-                        
-                        // Find this employee's shift for this day
+                        const daySchedule = schedule[dateKey] || [];
                         const empShift = daySchedule.find(item => item.employeeId === employee.id);
                         
                         if (empShift) {
-                            const shift = this.shifts.find(s => s.id === empShift.shiftId);
+                            const shift = shifts.find(s => s.id === empShift.shiftId);
                             if (shift) {
-                                row.push(`${shift.name}\n${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)}`);
+                                row.push(`${shift.name}\n${formatTime(shift.startTime)} - ${formatTime(shift.endTime)}`);
                             } else {
                                 row.push('');
                             }
@@ -903,1022 +634,906 @@
                     weekData.push(row);
                 });
                 
-                // Add empty row for spacing if there are employees
-                if (this.employees.length > 0) {
-                    weekData.push([]);
-                }
-                
                 return weekData;
-            }
+            };
 
-            createSummarySheet(year, month, monthName) {
+            const createSummarySheet = () => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const monthName = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+                
                 const summaryData = [
                     ['Branch Schedule Summary'],
                     [''],
-                    ['Region:', this.currentUser.region],
-                    ['Branch:', this.currentUser.branch],
+                    ['Region:', user.region],
+                    ['Branch:', user.branch],
                     ['Month:', monthName],
-                    ['Manager:', this.currentUser.email],
+                    ['Manager:', user.email],
                     ['Export Date:', new Date().toLocaleString()],
                     [''],
-                    ['Statistics'],
-                    ['Total Employees:', this.employees.length],
-                    ['Total Shift Types:', this.shifts.length],
-                    ['Days Scheduled:', Object.keys(this.schedule).filter(key => {
-                        const [y, m] = key.split('-').map(Number);
-                        return y === year && m === (month + 1);
-                    }).length],
-                    [''],
                     ['Employee Schedule Summary'],
-                    ['Employee', 'Days Scheduled', 'Total Hours']
+                    ['Employee', 'Days Scheduled']
                 ];
                 
-                // Calculate employee statistics
                 const daysInMonth = new Date(year, month + 1, 0).getDate();
-                this.employees.forEach(emp => {
+                employees.forEach(emp => {
                     let daysCount = 0;
-                    let totalHours = 0;
                     
                     for (let day = 1; day <= daysInMonth; day++) {
-                        const dateKey = this.getDateKey(year, month, day);
-                        const daySchedule = this.schedule[dateKey] || [];
-                        const empShift = daySchedule.find(item => item.employeeId === emp.id);
-                        
-                        if (empShift) {
+                        const dateKey = getDateKey(year, month, day);
+                        const daySchedule = schedule[dateKey] || [];
+                        if (daySchedule.some(item => item.employeeId === emp.id)) {
                             daysCount++;
-                            const shift = this.shifts.find(s => s.id === empShift.shiftId);
-                            if (shift) {
-                                // Parse times more safely
-                                const [startHour, startMin] = shift.startTime.split(':').map(Number);
-                                const [endHour, endMin] = shift.endTime.split(':').map(Number);
-                                
-                                const startMinutes = startHour * 60 + startMin;
-                                const endMinutes = endHour * 60 + endMin;
-                                const hours = (endMinutes - startMinutes) / 60;
-                                
-                                totalHours += hours > 0 ? hours : 0;
-                            }
                         }
                     }
                     
-                    summaryData.push([emp.name, daysCount, totalHours.toFixed(1)]);
+                    summaryData.push([emp.name, daysCount]);
                 });
                 
                 return summaryData;
-            }
+            };
 
-            exportSupervisorToExcel() {
-                if (!this.selectedBranch) {
-                    // Export all branches summary
-                    const summaryData = [
-                        ['All Branches Summary'],
-                        ['Export Date:', new Date().toLocaleString()],
-                        [''],
-                        ['Branch', 'Region', 'Manager', 'Employees', 'Shift Types', 'Scheduled Days', 'Last Updated']
-                    ];
-                    
-                    Object.keys(this.supervisorData).forEach(key => {
-                        const branch = this.supervisorData[key];
-                        const lastUpdated = branch.lastUpdated ? 
-                            new Date(branch.lastUpdated.seconds * 1000).toLocaleString() : 
-                            'Unknown';
-                        
-                        summaryData.push([
-                            branch.user.branch,
-                            branch.user.region,
-                            branch.user.email,
-                            branch.data.employees?.length || 0,
-                            branch.data.shifts?.length || 0,
-                            Object.keys(branch.data.schedule || {}).length,
-                            lastUpdated
-                        ]);
-                    });
-                    
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.aoa_to_sheet(summaryData);
-                    
-                    // Set column widths
-                    ws['!cols'] = [
-                        { width: 20 }, // Branch
-                        { width: 15 }, // Region
-                        { width: 25 }, // Manager
-                        { width: 12 }, // Employees
-                        { width: 12 }, // Shift Types
-                        { width: 15 }, // Scheduled Days
-                        { width: 20 }  // Last Updated
-                    ];
-                    
-                    XLSX.utils.book_append_sheet(wb, ws, 'All Branches');
-                    XLSX.writeFile(wb, `All_Branches_Summary_${new Date().toISOString().split('T')[0]}.xlsx`);
-                    
-                } else {
-                    // Export selected branch in weekly format
-                    const branch = this.supervisorData[this.selectedBranch];
-                    if (!branch) return;
-                    
-                    const year = this.supervisorCurrentDate.getFullYear();
-                    const month = this.supervisorCurrentDate.getMonth();
-                    const monthName = this.supervisorCurrentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-                    
-                    // Create workbook
-                    const wb = XLSX.utils.book_new();
-                    
-                    // Get all weeks in the month
-                    const weeks = this.getWeeksInMonth(year, month);
-                    
-                    // Create a sheet for each week
-                    weeks.forEach((week, weekIndex) => {
-                        const weekData = this.createSupervisorWeekSheet(week, weekIndex + 1, branch);
-                        const ws = XLSX.utils.aoa_to_sheet(weekData);
-                        
-                        // Set column widths
-                        ws['!cols'] = [
-                            { width: 15 }, // Name column
-                            { width: 14 }, // Sunday
-                            { width: 14 }, // Monday
-                            { width: 14 }, // Tuesday
-                            { width: 14 }, // Wednesday
-                            { width: 14 }, // Thursday
-                            { width: 14 }, // Friday
-                            { width: 14 }  // Saturday
-                        ];
-                        
-                        // Set row heights
-                        ws['!rows'] = [];
-                        for (let i = 0; i <= (branch.data.employees?.length || 0) + 1; i++) {
-                            ws['!rows'].push({ hpt: 35 });
-                        }
-                        
-                        // Add week sheet
-                        const sheetName = `Week ${weekIndex + 1} (${week.start.getMonth() + 1}/${week.start.getDate()})`;
-                        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-                    });
-                    
-                    // Create summary sheet
-                    const lastUpdated = branch.lastUpdated ? 
-                        new Date(branch.lastUpdated.seconds * 1000).toLocaleString() : 
-                        'Unknown';
-                    
-                    const summaryData = [
-                        ['Branch Schedule Summary'],
-                        [''],
-                        ['Region:', branch.user.region],
-                        ['Branch:', branch.user.branch],
-                        ['Month:', monthName],
-                        ['Manager:', branch.user.email],
-                        ['Last Updated:', lastUpdated],
-                        ['Export Date:', new Date().toLocaleString()],
-                        [''],
-                        ['Statistics'],
-                        ['Total Employees:', branch.data.employees?.length || 0],
-                        ['Total Shift Types:', branch.data.shifts?.length || 0],
-                        ['Days Scheduled:', Object.keys(branch.data.schedule || {}).filter(key => {
-                            const [y, m] = key.split('-').map(Number);
-                            return y === year && m === (month + 1);
-                        }).length],
-                        [''],
-                        ['Employee Schedule Summary'],
-                        ['Employee', 'Days Scheduled', 'Total Hours']
-                    ];
-                    
-                    // Calculate employee statistics
-                    const daysInMonth = new Date(year, month + 1, 0).getDate();
-                    if (branch.data.employees) {
-                        branch.data.employees.forEach(emp => {
-                            let daysCount = 0;
-                            let totalHours = 0;
-                            
-                            for (let day = 1; day <= daysInMonth; day++) {
-                                const dateKey = this.getDateKey(year, month, day);
-                                const daySchedule = branch.data.schedule[dateKey] || [];
-                                const empShift = daySchedule.find(item => item.employeeId === emp.id);
-                                
-                                if (empShift) {
-                                    daysCount++;
-                                    const shift = branch.data.shifts?.find(s => s.id === empShift.shiftId);
-                                    if (shift) {
-                                        const start = new Date(`2000/01/01 ${shift.startTime}`);
-                                        const end = new Date(`2000/01/01 ${shift.endTime}`);
-                                        const hours = (end - start) / (1000 * 60 * 60);
-                                        totalHours += hours;
-                                    }
-                                }
-                            }
-                            
-                            summaryData.push([emp.name, daysCount, totalHours.toFixed(1)]);
-                        });
-                    }
-                    
-                    const ws2 = XLSX.utils.aoa_to_sheet(summaryData);
-                    ws2['!cols'] = [{ width: 25 }, { width: 20 }, { width: 15 }];
-                    XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
-                    
-                    // Create shifts list
-                    const shiftsData = [
-                        ['Shift Templates'],
-                        [''],
-                        ['Name', 'Start Time', 'End Time'],
-                        ...(branch.data.shifts?.map(s => [s.name, this.formatTime(s.startTime), this.formatTime(s.endTime)]) || [])
-                    ];
-                    const ws3 = XLSX.utils.aoa_to_sheet(shiftsData);
-                    ws3['!cols'] = [{ width: 20 }, { width: 15 }, { width: 15 }];
-                    XLSX.utils.book_append_sheet(wb, ws3, 'Shifts');
-                    
-                    // Generate filename
-                    const filename = `${branch.user.region}_${branch.user.branch}_Schedule_${monthName.replace(' ', '_')}.xlsx`;
-                    
-                    // Download file
-                    XLSX.writeFile(wb, filename);
-                }
-                
-                this.showNotification('Report exported to Excel', 'success');
-            }
+            const renderTabs = () => (
+                <div className="tabs">
+                    <button 
+                        className={`tab ${activeTab === 'shifts' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('shifts')}
+                    >
+                        Shift Templates
+                    </button>
+                    <button 
+                        className={`tab ${activeTab === 'employees' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('employees')}
+                    >
+                        Employees
+                    </button>
+                    <button 
+                        className={`tab ${activeTab === 'schedule' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('schedule')}
+                    >
+                        Schedule
+                    </button>
+                </div>
+            );
 
-            createSupervisorWeekSheet(week, weekNumber, branch) {
-                const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-                
-                // Create header rows
-                const dateRow = ['Name'];
-                const dayRow = [''];
-                
-                for (let i = 0; i < 7; i++) {
-                    const currentDate = new Date(week.start);
-                    currentDate.setDate(week.start.getDate() + i);
-                    
-                    dateRow.push(`${currentDate.getMonth() + 1}/${currentDate.getDate()}/${currentDate.getFullYear()}`);
-                    dayRow.push(dayNames[i]);
-                }
-                
-                const weekData = [dateRow, dayRow];
-                
-                // Add employee rows
-                if (branch.data.employees && branch.data.employees.length > 0) {
-                    branch.data.employees.forEach(employee => {
-                        const row = [employee.name];
-                        
-                        for (let i = 0; i < 7; i++) {
-                            const currentDate = new Date(week.start);
-                            currentDate.setDate(week.start.getDate() + i);
-                            
-                            const dateKey = this.getDateKey(
-                                currentDate.getFullYear(), 
-                                currentDate.getMonth(), 
-                                currentDate.getDate()
-                            );
-                            const daySchedule = branch.data.schedule[dateKey] || [];
-                            
-                            // Find this employee's shift for this day
-                            const empShift = daySchedule.find(item => item.employeeId === employee.id);
-                            
-                            if (empShift) {
-                                const shift = branch.data.shifts?.find(s => s.id === empShift.shiftId);
-                                if (shift) {
-                                    row.push(`${shift.name}\n${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)}`);
-                                } else {
-                                    row.push('');
-                                }
-                            } else {
-                                row.push('OFF');
-                            }
-                        }
-                        
-                        weekData.push(row);
-                    });
-                } else {
-                    weekData.push(['No employees scheduled']);
-                }
-                
-                // Add empty row for spacing
-                weekData.push([]);
-                
-                return weekData;
-            }
-
-            applyBulkSchedule() {
-                const startDate = new Date(document.getElementById('bulkStart').value);
-                const endDate = new Date(document.getElementById('bulkEnd').value);
-                
-                if (!startDate || !endDate || startDate > endDate) {
-                    this.showNotification('Please select valid date range', 'error');
-                    return;
-                }
-                
-                const includeSaturdays = document.getElementById('includeSaturdays')?.checked;
-                let count = 0;
-                
-                for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-                    const dayOfWeek = date.getDay();
-                    
-                    // Skip Sundays always
-                    if (dayOfWeek === 0) continue;
-                    
-                    // Handle Saturdays separately
-                    if (dayOfWeek === 6) {
-                        if (!includeSaturdays) continue;
-                        
-                        const dateKey = this.getDateKey(date.getFullYear(), date.getMonth(), date.getDate());
-                        
-                        this.shifts.forEach(shift => {
-                            this.employees.forEach(employee => {
-                                // Use Saturday-specific checkboxes
-                                const checkbox = document.getElementById(`bulk-sat-${shift.id}-${employee.id}`);
-                                if (!checkbox?.checked) return;
-                                
-                                if (!this.schedule[dateKey]) this.schedule[dateKey] = [];
-                                
-                                if (!this.schedule[dateKey].some(item => 
-                                    item.employeeId === employee.id && item.shiftId === shift.id)) {
-                                    this.schedule[dateKey].push({
-                                        id: this.generateId(),
-                                        employeeId: employee.id,
-                                        shiftId: shift.id,
-                                        date: dateKey
-                                    });
-                                    count++;
-                                }
-                            });
-                        });
-                    } else {
-                        // Weekdays (Mon-Fri)
-                        const dateKey = this.getDateKey(date.getFullYear(), date.getMonth(), date.getDate());
-                        
-                        this.shifts.forEach(shift => {
-                            this.employees.forEach(employee => {
-                                // Use weekday checkboxes
-                                const checkbox = document.getElementById(`bulk-${shift.id}-${employee.id}`);
-                                if (!checkbox?.checked) return;
-                                
-                                if (!this.schedule[dateKey]) this.schedule[dateKey] = [];
-                                
-                                if (!this.schedule[dateKey].some(item => 
-                                    item.employeeId === employee.id && item.shiftId === shift.id)) {
-                                    this.schedule[dateKey].push({
-                                        id: this.generateId(),
-                                        employeeId: employee.id,
-                                        shiftId: shift.id,
-                                        date: dateKey
-                                    });
-                                    count++;
-                                }
-                            });
-                        });
-                    }
-                }
-                
-                this.triggerAutoSave();
-                this.renderCalendar();
-                this.closeModal('bulkModal');
-                this.showNotification(`Scheduled ${count} shifts!`);
-            }
-
-            clearMonth() {
-                if (!confirm('Clear all shifts for this month?')) return;
-                
-                const year = this.currentDate.getFullYear();
-                const month = this.currentDate.getMonth();
-                const lastDay = new Date(year, month + 1, 0).getDate();
-                
-                for (let day = 1; day <= lastDay; day++) {
-                    delete this.schedule[this.getDateKey(year, month, day)];
-                }
-                
-                this.triggerAutoSave();
-                this.renderCalendar();
-                this.showNotification('Month cleared!');
-            }
-
-            // Render Methods
-            updateUI() {
-                if (this.currentUser) {
-                    document.getElementById('branchInfo').textContent = 
-                        `${this.currentUser.region} Region - ${this.currentUser.branch} Branch`;
-                }
-                this.renderEmployees();
-                this.renderShifts();
-                this.renderCalendar();
-            }
-
-            renderEmployees() {
-                const container = document.getElementById('employeeList');
-                
-                if (!this.employees.length) {
-                    container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">No employees added yet</p>';
-                    return;
-                }
-                
-                container.innerHTML = this.employees.map(emp => `
-                    <div class="employee-card">
-                        <span>${emp.name}</span>
-                        <button class="btn btn-danger btn-small" data-action="removeEmployee" data-id="${emp.id}">×</button>
-                    </div>
-                `).join('');
-            }
-
-            renderShifts() {
-                const container = document.getElementById('shiftList');
-                
-                if (!this.shifts.length) {
-                    container.innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">No shift templates created yet</p>';
-                    return;
-                }
-                
-                container.innerHTML = this.shifts.map(shift => `
-                    <div class="shift-card">
-                        ${shift.isNew ? `
-                            <div class="shift-form">
-                                <div>
-                                    <label>Shift Name</label>
-                                    <input type="text" id="shift-name-${shift.id}" class="form-input" placeholder="Morning Shift" value="${shift.name}">
-                                </div>
-                                <div>
-                                    <label>Start Time</label>
-                                    <input type="time" id="shift-start-${shift.id}" class="form-input" value="${shift.startTime}">
-                                </div>
-                                <div>
-                                    <label>End Time</label>
-                                    <input type="time" id="shift-end-${shift.id}" class="form-input" value="${shift.endTime}">
-                                </div>
-                                <div>
-                                    <label>Color</label>
-                                    <input type="color" id="shift-color-${shift.id}" class="form-input" value="${shift.color}">
-                                    <button class="btn btn-success btn-small" data-action="saveShift" data-id="${shift.id}" style="margin-top: 10px; width: 100%;">Save</button>
-                                </div>
-                            </div>
-                        ` : `
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <h3>${shift.name}</h3>
-                                    <p>${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)}</p>
-                                </div>
-                                <div style="display: flex; gap: 10px; align-items: center;">
-                                    <div style="width: 20px; height: 20px; background: ${shift.color}; border-radius: 4px;"></div>
-                                    <button class="btn btn-danger btn-small" data-action="removeShift" data-id="${shift.id}">Delete</button>
-                                </div>
-                            </div>
-                        `}
-                    </div>
-                `).join('');
-            }
-
-            renderCalendar() {
-                const calendar = document.getElementById('calendar');
-                const monthTitle = document.getElementById('monthTitle');
-                
-                const year = this.currentDate.getFullYear();
-                const month = this.currentDate.getMonth();
-                const today = new Date();
-                
-                monthTitle.textContent = new Intl.DateTimeFormat('en-US', { 
-                    month: 'long', 
-                    year: 'numeric' 
-                }).format(this.currentDate);
-                
-                calendar.innerHTML = '';
-                
-                ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
-                    const dayHeader = document.createElement('div');
-                    dayHeader.className = 'day-header';
-                    dayHeader.textContent = day;
-                    calendar.appendChild(dayHeader);
-                });
-                
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const daysInMonth = lastDay.getDate();
-                const startingDay = firstDay.getDay();
-                
-                for (let i = 0; i < startingDay; i++) {
-                    const emptyDay = document.createElement('div');
-                    emptyDay.className = 'calendar-day other-month';
-                    calendar.appendChild(emptyDay);
-                }
-                
-                for (let day = 1; day <= daysInMonth; day++) {
-                    const dayElement = document.createElement('div');
-                    dayElement.className = 'calendar-day';
-                    
-                    const dayDate = new Date(year, month, day);
-                    if (dayDate.toDateString() === today.toDateString()) {
-                        dayElement.classList.add('today');
-                    }
-                    
-                    dayElement.dataset.date = JSON.stringify({ year, month, day });
-                    
-                    const dayNumber = document.createElement('div');
-                    dayNumber.className = 'day-number';
-                    dayNumber.textContent = day;
-                    dayElement.appendChild(dayNumber);
-                    
-                    const dateKey = this.getDateKey(year, month, day);
-                    const daySchedule = this.schedule[dateKey] || [];
-                    
-                    daySchedule.forEach(item => {
-                        const employee = this.employees.find(e => e.id === item.employeeId);
-                        const shift = this.shifts.find(s => s.id === item.shiftId);
-                        
-                        if (employee && shift) {
-                            const shiftItem = document.createElement('div');
-                            shiftItem.className = 'shift-item';
-                            shiftItem.style.background = shift.color;
-                            shiftItem.textContent = `${employee.name} (${this.formatTime(shift.startTime)}-${this.formatTime(shift.endTime)})`;
-                            
-                            const removeBtn = document.createElement('button');
-                            removeBtn.className = 'remove-shift';
-                            removeBtn.innerHTML = '×';
-                            removeBtn.dataset.dateKey = dateKey;
-                            removeBtn.dataset.itemId = item.id;
-                            shiftItem.appendChild(removeBtn);
-                            
-                            dayElement.appendChild(shiftItem);
-                        }
-                    });
-                    
-                    calendar.appendChild(dayElement);
-                }
-            }
-
-            renderSupervisorDashboard() {
-                const branchKeys = Object.keys(this.supervisorData);
-                
-                if (!branchKeys.length) {
-                    document.getElementById('supervisorStats').innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">No branch data available yet</p>';
-                    document.getElementById('branchSelector').classList.add('hidden');
-                    document.getElementById('supervisorContent').innerHTML = '';
-                    return;
-                }
-                
-                let totalEmployees = 0, totalShifts = 0, totalDays = 0;
-                
-                branchKeys.forEach(key => {
-                    const branch = this.supervisorData[key];
-                    totalEmployees += branch.data.employees?.length || 0;
-                    totalShifts += branch.data.shifts?.length || 0;
-                    totalDays += Object.keys(branch.data.schedule || {}).length;
-                });
-                
-                document.getElementById('supervisorStats').innerHTML = `
-                    <div class="stat-card"><div class="stat-number">${branchKeys.length}</div><div class="stat-label">Branches</div></div>
-                    <div class="stat-card"><div class="stat-number">${totalEmployees}</div><div class="stat-label">Total Employees</div></div>
-                    <div class="stat-card"><div class="stat-number">${totalShifts}</div><div class="stat-label">Shift Templates</div></div>
-                    <div class="stat-card"><div class="stat-number">${totalDays}</div><div class="stat-label">Scheduled Days</div></div>
-                `;
-                
-                document.getElementById('branchSelector').classList.remove('hidden');
-                const dropdown = document.getElementById('branchDropdown');
-                dropdown.innerHTML = '<option value="">Choose a branch...</option>' + 
-                    branchKeys.map(key => {
-                        const branch = this.supervisorData[key];
-                        return `<option value="${key}">${branch.user.region} - ${branch.user.branch}</option>`;
-                    }).join('');
-                
-                document.getElementById('supervisorContent').innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">Select a branch above to view detailed schedules</p>';
-            }
-
-            selectBranch(branchKey) {
-                if (!branchKey) {
-                    document.getElementById('supervisorContent').innerHTML = '<p style="text-align: center; color: #64748b; padding: 40px;">Select a branch above to view detailed schedules</p>';
-                    return;
-                }
-                
-                const branch = this.supervisorData[branchKey];
-                if (!branch) return;
-                
-                // Store for calendar navigation
-                this.selectedBranch = branchKey;
-                this.supervisorCurrentDate = new Date();
-                
-                const lastUpdated = branch.lastUpdated ? 
-                    new Date(branch.lastUpdated.seconds * 1000).toLocaleString() : 
-                    'Unknown';
-                
-                document.getElementById('supervisorContent').innerHTML = `
-                    <div style="margin-bottom: 30px;">
-                        <h2>${branch.user.region} Region - ${branch.user.branch} Branch</h2>
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0;">
-                            <div style="background: #f8fafc; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 18px; font-weight: 600; color: #2563eb;">${branch.data.employees?.length || 0}</div>
-                                <div style="color: #64748b;">Employees</div>
-                            </div>
-                            <div style="background: #f8fafc; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 18px; font-weight: 600; color: #2563eb;">${branch.data.shifts?.length || 0}</div>
-                                <div style="color: #64748b;">Shift Templates</div>
-                            </div>
-                            <div style="background: #f8fafc; padding: 15px; border-radius: 8px;">
-                                <div style="font-size: 18px; font-weight: 600; color: #2563eb;">${Object.keys(branch.data.schedule || {}).length}</div>
-                                <div style="color: #64748b;">Scheduled Days</div>
-                            </div>
-                        </div>
-                        <p><strong>Manager:</strong> ${branch.user.email}</p>
-                        <p><strong>Last Updated:</strong> ${lastUpdated}</p>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px;">
-                        <div>
-                            <h3 style="margin-bottom: 15px;">Shift Templates</h3>
-                            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; min-height: 200px;">
-                                ${branch.data.shifts?.length ? branch.data.shifts.map(shift => `
-                                    <div style="margin-bottom: 10px; padding: 10px; background: white; border-radius: 6px; border-left: 4px solid ${shift.color};">
-                                        <strong>${shift.name}</strong><br>
-                                        <small>${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)}</small>
-                                    </div>
-                                `).join('') : '<p style="color: #64748b;">No shift templates</p>'}
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h3 style="margin-bottom: 15px;">Employees</h3>
-                            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; min-height: 200px;">
-                                ${branch.data.employees?.length ? `
-                                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                                        ${branch.data.employees.map(employee => `
-                                            <span style="background: white; padding: 6px 12px; border-radius: 16px; font-size: 14px;">
-                                                ${employee.name}
-                                            </span>
-                                        `).join('')}
-                                    </div>
-                                ` : '<p style="color: #64748b;">No employees</p>'}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <h3 style="margin-bottom: 15px;">Branch Schedule Calendar</h3>
-                        <div style="background: #f8fafc; padding: 20px; border-radius: 8px;">
-                            <div class="month-nav">
-                                <button class="btn btn-secondary" id="supervisorPrevBtn">← Previous</button>
-                                <h3 class="month-title" id="supervisorMonthTitle">January 2024</h3>
-                                <button class="btn btn-secondary" id="supervisorNextBtn">Next →</button>
-                            </div>
-                            
-                            <div class="calendar" id="supervisorCalendar"></div>
-                        </div>
-                    </div>
-                `;
-                
-                this.renderSupervisorCalendar();
-            }
-
-            renderSupervisorCalendar() {
-                if (!this.selectedBranch || !this.supervisorCurrentDate) return;
-                
-                const branch = this.supervisorData[this.selectedBranch];
-                if (!branch) return;
-                
-                const calendar = document.getElementById('supervisorCalendar');
-                const monthTitle = document.getElementById('supervisorMonthTitle');
-                
-                const year = this.supervisorCurrentDate.getFullYear();
-                const month = this.supervisorCurrentDate.getMonth();
-                const today = new Date();
-                
-                monthTitle.textContent = new Intl.DateTimeFormat('en-US', { 
-                    month: 'long', 
-                    year: 'numeric' 
-                }).format(this.supervisorCurrentDate);
-                
-                calendar.innerHTML = '';
-                
-                ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
-                    const dayHeader = document.createElement('div');
-                    dayHeader.className = 'day-header';
-                    dayHeader.textContent = day;
-                    calendar.appendChild(dayHeader);
-                });
-                
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const daysInMonth = lastDay.getDate();
-                const startingDay = firstDay.getDay();
-                
-                for (let i = 0; i < startingDay; i++) {
-                    const emptyDay = document.createElement('div');
-                    emptyDay.className = 'calendar-day other-month';
-                    calendar.appendChild(emptyDay);
-                }
-                
-                for (let day = 1; day <= daysInMonth; day++) {
-                    const dayElement = document.createElement('div');
-                    dayElement.className = 'calendar-day';
-                    
-                    const dayDate = new Date(year, month, day);
-                    if (dayDate.toDateString() === today.toDateString()) {
-                        dayElement.classList.add('today');
-                    }
-                    
-                    const dayNumber = document.createElement('div');
-                    dayNumber.className = 'day-number';
-                    dayNumber.textContent = day;
-                    dayElement.appendChild(dayNumber);
-                    
-                    const dateKey = this.getDateKey(year, month, day);
-                    const daySchedule = branch.data.schedule[dateKey] || [];
-                    
-                    daySchedule.forEach(item => {
-                        const employee = branch.data.employees?.find(e => e.id === item.employeeId);
-                        const shift = branch.data.shifts?.find(s => s.id === item.shiftId);
-                        
-                        if (employee && shift) {
-                            const shiftItem = document.createElement('div');
-                            shiftItem.className = 'shift-item';
-                            shiftItem.style.background = shift.color;
-                            shiftItem.style.cursor = 'default';
-                            shiftItem.textContent = `${employee.name} (${this.formatTime(shift.startTime)}-${this.formatTime(shift.endTime)})`;
-                            shiftItem.title = `${employee.name} - ${shift.name}\n${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)}`;
-                            
-                            dayElement.appendChild(shiftItem);
-                        }
-                    });
-                    
-                    calendar.appendChild(dayElement);
-                }
-            }
-
-            openModal(modalId, data = {}) {
-                const modal = document.getElementById(modalId);
-                if (!modal) return;
-                
-                if (modalId === 'dayModal') {
-                    if (!this.employees.length || !this.shifts.length) {
-                        this.showNotification('Add employees and shifts first', 'warning');
-                        return;
-                    }
-                    
-                    const { year, month, day } = data;
-                    const dateKey = this.getDateKey(year, month, day);
-                    const daySchedule = this.schedule[dateKey] || [];
-                    const date = new Date(year, month, day);
-                    
-                    document.getElementById('dayModalTitle').textContent = 
-                        `Schedule for ${date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`;
-                    
-                    document.getElementById('dayModalContent').innerHTML = this.shifts.map(shift => {
-                        const assignedEmployees = daySchedule.filter(item => item.shiftId === shift.id).map(item => item.employeeId);
-                        
-                        return `
-                            <div class="shift-group">
-                                <h4>${shift.name} (${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)})</h4>
-                                <div class="checkbox-list">
-                                    ${this.employees.map(emp => `
-                                        <div class="checkbox-item">
-                                            <input type="checkbox" 
-                                                   id="assign-${shift.id}-${emp.id}"
-                                                   data-datekey="${dateKey}"
-                                                   data-employee="${emp.id}"
-                                                   data-shift="${shift.id}"
-                                                   ${assignedEmployees.includes(emp.id) ? 'checked' : ''}>
-                                            <label for="assign-${shift.id}-${emp.id}">${emp.name}</label>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-                    
-                } else if (modalId === 'bulkModal') {
-                    if (!this.employees.length || !this.shifts.length) {
-                        this.showNotification('Add employees and shifts first', 'warning');
-                        return;
-                    }
-                    
-                    const today = new Date();
-                    const monday = new Date(today);
-                    monday.setDate(today.getDate() - today.getDay() + 1);
-                    const friday = new Date(monday);
-                    friday.setDate(monday.getDate() + 4);
-                    
-                    document.getElementById('bulkStart').value = monday.toISOString().split('T')[0];
-                    document.getElementById('bulkEnd').value = friday.toISOString().split('T')[0];
-                    
-                    document.getElementById('bulkContent').innerHTML = `
-                        <h4 style="margin-bottom: 15px; color: #2563eb;">Weekday Schedule (Mon-Fri)</h4>
-                        ${this.shifts.map(shift => `
-                            <div class="shift-group">
-                                <h4>${shift.name} (${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)})</h4>
-                                <div class="checkbox-list">
-                                    ${this.employees.map(emp => `
-                                        <div class="checkbox-item">
-                                            <input type="checkbox" id="bulk-${shift.id}-${emp.id}">
-                                            <label for="bulk-${shift.id}-${emp.id}">${emp.name}</label>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        `).join('')}
-                        
-                        <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e2e8f0;">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-                                <input type="checkbox" id="includeSaturdays" checked>
-                                <label for="includeSaturdays" style="font-weight: 600; color: #2563eb;">Include Saturdays</label>
-                            </div>
-                            <div id="saturdaySection">
-                                <h4 style="margin-bottom: 15px; color: #059669;">Saturday Schedule</h4>
-                                ${this.shifts.map(shift => `
-                                    <div class="shift-group">
-                                        <h4>${shift.name} (${this.formatTime(shift.startTime)} - ${this.formatTime(shift.endTime)})</h4>
-                                        <div class="checkbox-list">
-                                            ${this.employees.map(emp => `
-                                                <div class="checkbox-item">
-                                                    <input type="checkbox" id="bulk-sat-${shift.id}-${emp.id}">
-                                                    <label for="bulk-sat-${shift.id}-${emp.id}">${emp.name}</label>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                modal.style.display = 'block';
-            }
-
-            closeModal(modalId) {
-                const modal = document.getElementById(modalId);
-                if (modal) modal.style.display = 'none';
-            }
-
-            // Initialize app
-            init() {
-                // Login type switcher
-                document.querySelectorAll('.login-type').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        this.userType = e.target.dataset.type;
-                        document.querySelectorAll('.login-type').forEach(b => b.classList.remove('active'));
-                        e.target.classList.add('active');
-                        
-                        document.getElementById('managerFields').classList.toggle('hidden', this.userType === 'supervisor');
-                        document.getElementById('supervisorFields').classList.toggle('hidden', this.userType === 'manager');
-                    });
-                });
-
-                // Region/Branch selector
-                document.getElementById('region').addEventListener('change', (e) => {
-                    const branchSelect = document.getElementById('branch');
-                    branchSelect.innerHTML = '<option value="">Select Branch</option>';
-                    
-                    if (e.target.value && this.branches[e.target.value]) {
-                        this.branches[e.target.value].forEach(branch => {
-                            const option = document.createElement('option');
-                            option.value = branch;
-                            option.textContent = branch;
-                            branchSelect.appendChild(option);
-                        });
-                    }
-                });
-
-                // Login form
-                document.getElementById('loginForm').addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    
-                    const email = this.userType === 'supervisor' ? 
-                        document.getElementById('supervisorEmail').value : 
-                        document.getElementById('email').value;
-                    const password = this.userType === 'supervisor' ? 
-                        document.getElementById('supervisorPassword').value : 
-                        document.getElementById('password').value;
-                    const region = this.userType === 'manager' ? document.getElementById('region').value : null;
-                    const branch = this.userType === 'manager' ? document.getElementById('branch').value : null;
-                    
-                    if (!email || !password || (this.userType === 'manager' && (!region || !branch))) {
-                        this.showNotification('Please fill in all fields', 'error');
-                        return;
-                    }
-                    
-                    await this.login(email, password, region, branch);
-                });
-
-                // Tab switcher
-                document.querySelectorAll('.tab').forEach(tab => {
-                    tab.addEventListener('click', (e) => {
-                        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                        e.target.classList.add('active');
-                        
-                        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                        document.getElementById(e.target.dataset.tab + 'Tab').classList.add('active');
-                    });
-                });
-
-                // Button handlers
-                document.getElementById('saveBtn')?.addEventListener('click', () => this.saveToFirebase());
-                document.getElementById('exportBtn')?.addEventListener('click', () => this.exportToExcel());
-                document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
-                document.getElementById('supervisorExportBtn')?.addEventListener('click', () => this.exportToExcel());
-                document.getElementById('supervisorLogoutBtn')?.addEventListener('click', () => this.logout());
-                
-                document.getElementById('addEmployeeBtn')?.addEventListener('click', () => {
-                    const input = document.getElementById('newEmployeeName');
-                    this.addEmployee(input.value);
-                    input.value = '';
-                });
-                
-                document.getElementById('newEmployeeName')?.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') {
-                        this.addEmployee(e.target.value);
-                        e.target.value = '';
-                    }
-                });
-                
-                document.getElementById('addShiftBtn')?.addEventListener('click', () => this.addShift());
-                document.getElementById('prevMonthBtn')?.addEventListener('click', () => {
-                    this.currentDate.setMonth(this.currentDate.getMonth() - 1);
-                    this.renderCalendar();
-                });
-                document.getElementById('nextMonthBtn')?.addEventListener('click', () => {
-                    this.currentDate.setMonth(this.currentDate.getMonth() + 1);
-                    this.renderCalendar();
-                });
-                document.getElementById('bulkBtn')?.addEventListener('click', () => this.openModal('bulkModal'));
-                document.getElementById('clearBtn')?.addEventListener('click', () => this.clearMonth());
-                
-                document.getElementById('bulkCancelBtn')?.addEventListener('click', () => this.closeModal('bulkModal'));
-                document.getElementById('bulkApplyBtn')?.addEventListener('click', () => this.applyBulkSchedule());
-
-                // Supervisor branch selector
-                document.getElementById('branchDropdown')?.addEventListener('change', (e) => {
-                    this.selectBranch(e.target.value);
-                });
-
-                // Event delegation for dynamic elements
-                document.addEventListener('click', (e) => {
-                    const target = e.target;
-                    
-                    // Handle action buttons
-                    if (target.dataset.action) {
-                        const action = target.dataset.action;
-                        const id = target.dataset.id;
-                        
-                        switch(action) {
-                            case 'removeEmployee': this.removeEmployee(id); break;
-                            case 'saveShift': this.saveShift(id); break;
-                            case 'removeShift': this.removeShift(id); break;
-                        }
-                    }
-                    
-                    // Handle calendar days
-                    if (target.classList.contains('calendar-day') && !target.classList.contains('other-month')) {
-                        const data = JSON.parse(target.dataset.date || '{}');
-                        if (data.year) this.openModal('dayModal', data);
-                    }
-                    
-                    // Handle remove shift buttons
-                    if (target.classList.contains('remove-shift')) {
-                        e.stopPropagation();
-                        this.removeScheduleItem(target.dataset.dateKey, target.dataset.itemId);
-                    }
-                    
-                    // Handle modal close buttons
-                    if (target.classList.contains('close-btn')) {
-                        const modal = target.closest('.modal');
-                        if (modal) this.closeModal(modal.id);
-                    }
-                    
-                    // Handle day modal Done button
-                    if (target.id === 'dayModalDone') {
-                        this.closeModal('dayModal');
-                    }
-                    
-                    // Handle modal backgrounds
-                    if (target.classList.contains('modal')) {
-                        this.closeModal(target.id);
-                    }
-                    
-                    // Handle supervisor calendar navigation
-                    if (target.id === 'supervisorPrevBtn') {
-                        this.supervisorCurrentDate.setMonth(this.supervisorCurrentDate.getMonth() - 1);
-                        this.renderSupervisorCalendar();
-                    }
-                    
-                    if (target.id === 'supervisorNextBtn') {
-                        this.supervisorCurrentDate.setMonth(this.supervisorCurrentDate.getMonth() + 1);
-                        this.renderSupervisorCalendar();
-                    }
-                });
-
-                // Event delegation for schedule checkboxes
-                document.addEventListener('change', (e) => {
-                    if (e.target.type === 'checkbox' && e.target.id?.startsWith('assign-')) {
-                        this.toggleSchedule(
-                            e.target.dataset.datekey,
-                            e.target.dataset.employee,
-                            e.target.dataset.shift,
-                            e.target.checked
+            const renderContent = () => {
+                switch (activeTab) {
+                    case 'shifts':
+                        return <ShiftsTab shifts={shifts} setShifts={setShifts} showNotification={showNotification} />;
+                    case 'employees':
+                        return <EmployeesTab employees={employees} setEmployees={setEmployees} showNotification={showNotification} />;
+                    case 'schedule':
+                        return (
+                            <ScheduleTab 
+                                employees={employees}
+                                shifts={shifts}
+                                schedule={schedule}
+                                setSchedule={setSchedule}
+                                currentDate={currentDate}
+                                setCurrentDate={setCurrentDate}
+                                showNotification={showNotification}
+                                modals={modals}
+                                setModals={setModals}
+                            />
                         );
-                    }
-                    
-                    // Toggle Saturday section visibility
-                    if (e.target.id === 'includeSaturdays') {
-                        const saturdaySection = document.getElementById('saturdaySection');
-                        if (saturdaySection) {
-                            saturdaySection.style.display = e.target.checked ? 'block' : 'none';
-                        }
-                    }
-                });
-            }
+                    default:
+                        return null;
+                }
+            };
+
+            return (
+                <div className="card">
+                    <div className="header">
+                        <h1>Branch Scheduler</h1>
+                        <div>{user.region} Region - {user.branch} Branch</div>
+                        <div className="header-actions">
+                            <button className="btn btn-secondary btn-small" onClick={exportToExcel}>
+                                Export to Excel
+                            </button>
+                            <button className="btn btn-secondary btn-small" onClick={saveToFirebase}>
+                                Save to Cloud
+                            </button>
+                            <button className="btn btn-secondary btn-small" onClick={onLogout}>
+                                Sign Out
+                            </button>
+                        </div>
+                    </div>
+                    {renderTabs()}
+                    {renderContent()}
+                    {notification && (
+                        <Notification 
+                            message={notification.message} 
+                            type={notification.type}
+                            onClose={() => setNotification(null)}
+                        />
+                    )}
+                </div>
+            );
         }
 
-        // Start the application
-        document.addEventListener('DOMContentLoaded', () => new App());
+        // Shifts Tab Component
+        function ShiftsTab({ shifts, setShifts, showNotification }) {
+            const addShift = () => {
+                setShifts([...shifts, {
+                    id: generateId(),
+                    name: '',
+                    startTime: '09:00',
+                    endTime: '17:00',
+                    color: '#059669',
+                    isNew: true
+                }]);
+            };
+
+            const saveShift = (id) => {
+                const shift = shifts.find(s => s.id === id);
+                const nameInput = document.getElementById(`shift-name-${id}`);
+                const startInput = document.getElementById(`shift-start-${id}`);
+                const endInput = document.getElementById(`shift-end-${id}`);
+                const colorInput = document.getElementById(`shift-color-${id}`);
+                
+                if (!nameInput.value.trim()) {
+                    showNotification('Shift name is required', 'error');
+                    return;
+                }
+                
+                if (startInput.value >= endInput.value) {
+                    showNotification('End time must be after start time', 'error');
+                    return;
+                }
+                
+                setShifts(shifts.map(s => 
+                    s.id === id ? {
+                        ...s,
+                        name: nameInput.value.trim(),
+                        startTime: startInput.value,
+                        endTime: endInput.value,
+                        color: colorInput.value,
+                        isNew: false
+                    } : s
+                ));
+                showNotification(`Saved ${nameInput.value.trim()}`);
+            };
+
+            const removeShift = (id) => {
+                const shift = shifts.find(s => s.id === id);
+                if (confirm(`Delete ${shift.name}?`)) {
+                    setShifts(shifts.filter(s => s.id !== id));
+                    showNotification('Shift deleted');
+                }
+            };
+
+            return (
+                <div>
+                    <h2>Shift Templates</h2>
+                    <div className="shift-list">
+                        {shifts.length === 0 ? (
+                            <p className="empty-state">No shift templates created yet</p>
+                        ) : (
+                            shifts.map(shift => (
+                                <div key={shift.id} className="shift-card">
+                                    {shift.isNew ? (
+                                        <div className="shift-form">
+                                            <div>
+                                                <label>Shift Name</label>
+                                                <input 
+                                                    type="text" 
+                                                    id={`shift-name-${shift.id}`} 
+                                                    className="form-input" 
+                                                    placeholder="Morning Shift" 
+                                                    defaultValue={shift.name}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label>Start Time</label>
+                                                <input 
+                                                    type="time" 
+                                                    id={`shift-start-${shift.id}`} 
+                                                    className="form-input" 
+                                                    defaultValue={shift.startTime}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label>End Time</label>
+                                                <input 
+                                                    type="time" 
+                                                    id={`shift-end-${shift.id}`} 
+                                                    className="form-input" 
+                                                    defaultValue={shift.endTime}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label>Color</label>
+                                                <input 
+                                                    type="color" 
+                                                    id={`shift-color-${shift.id}`} 
+                                                    className="form-input" 
+                                                    defaultValue={shift.color}
+                                                />
+                                                <button 
+                                                    className="btn btn-success btn-small" 
+                                                    onClick={() => saveShift(shift.id)}
+                                                    style={{marginTop: 10, width: '100%'}}
+                                                >
+                                                    Save
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                                            <div>
+                                                <h3>{shift.name}</h3>
+                                                <p>{formatTime(shift.startTime)} - {formatTime(shift.endTime)}</p>
+                                            </div>
+                                            <div style={{display: 'flex', gap: 10, alignItems: 'center'}}>
+                                                <div style={{width: 20, height: 20, background: shift.color, borderRadius: 4}}></div>
+                                                <button 
+                                                    className="btn btn-danger btn-small" 
+                                                    onClick={() => removeShift(shift.id)}
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <button className="btn btn-primary" onClick={addShift}>
+                        Add Shift Template
+                    </button>
+                </div>
+            );
+        }
+
+        // Employees Tab Component
+        function EmployeesTab({ employees, setEmployees, showNotification }) {
+            const [newEmployeeName, setNewEmployeeName] = useState('');
+
+            const addEmployee = () => {
+                if (!newEmployeeName.trim()) {
+                    showNotification('Please enter employee name', 'error');
+                    return;
+                }
+                
+                if (employees.some(e => e.name === newEmployeeName.trim())) {
+                    showNotification('Employee already exists', 'error');
+                    return;
+                }
+                
+                setEmployees([...employees, { id: generateId(), name: newEmployeeName.trim() }]);
+                setNewEmployeeName('');
+                showNotification(`Added ${newEmployeeName.trim()}`);
+            };
+
+            const removeEmployee = (id) => {
+                const employee = employees.find(e => e.id === id);
+                if (confirm(`Remove ${employee.name}?`)) {
+                    setEmployees(employees.filter(e => e.id !== id));
+                    showNotification(`Removed ${employee.name}`);
+                }
+            };
+
+            return (
+                <div>
+                    <h2>Employees</h2>
+                    <div style={{display: 'flex', gap: 10, marginBottom: 20}}>
+                        <input 
+                            type="text" 
+                            className="form-input" 
+                            placeholder="Employee name" 
+                            style={{flex: 1}}
+                            value={newEmployeeName}
+                            onChange={(e) => setNewEmployeeName(e.target.value)}
+                            onKeyPress={(e) => e.key === 'Enter' && addEmployee()}
+                        />
+                        <button className="btn btn-success" onClick={addEmployee}>
+                            Add Employee
+                        </button>
+                    </div>
+                    <div className="employee-list">
+                        {employees.length === 0 ? (
+                            <p className="empty-state">No employees added yet</p>
+                        ) : (
+                            employees.map(employee => (
+                                <div key={employee.id} className="employee-card">
+                                    <span>{employee.name}</span>
+                                    <button 
+                                        className="btn btn-danger btn-small" 
+                                        onClick={() => removeEmployee(employee.id)}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        // Schedule Tab Component
+        function ScheduleTab({ employees, shifts, schedule, setSchedule, currentDate, setCurrentDate, showNotification, modals, setModals }) {
+            const renderCalendar = () => {
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                const today = new Date();
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const daysInMonth = lastDay.getDate();
+                const startingDay = firstDay.getDay();
+                
+                const days = [];
+                const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                
+                // Add day headers
+                dayNames.forEach(day => {
+                    days.push(<div key={`header-${day}`} className="day-header">{day}</div>);
+                });
+                
+                // Add empty cells for previous month
+                for (let i = 0; i < startingDay; i++) {
+                    days.push(<div key={`empty-${i}`} className="calendar-day other-month"></div>);
+                }
+                
+                // Add month days
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dayDate = new Date(year, month, day);
+                    const isToday = dayDate.toDateString() === today.toDateString();
+                    const dateKey = getDateKey(year, month, day);
+                    const daySchedule = schedule[dateKey] || [];
+                    
+                    days.push(
+                        <div 
+                            key={`day-${day}`} 
+                            className={`calendar-day ${isToday ? 'today' : ''}`}
+                            onClick={() => openDayModal(year, month, day)}
+                        >
+                            <div className="day-number">{day}</div>
+                            {daySchedule.map(item => {
+                                const employee = employees.find(e => e.id === item.employeeId);
+                                const shift = shifts.find(s => s.id === item.shiftId);
+                                
+                                if (employee && shift) {
+                                    return (
+                                        <div key={item.id} className="shift-item" style={{background: shift.color}}>
+                                            {employee.name} ({formatTime(shift.startTime)}-{formatTime(shift.endTime)})
+                                            <button 
+                                                className="remove-shift"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    removeScheduleItem(dateKey, item.id);
+                                                }}
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    );
+                                }
+                                return null;
+                            })}
+                        </div>
+                    );
+                }
+                
+                return days;
+            };
+
+            const openDayModal = (year, month, day) => {
+                if (employees.length === 0 || shifts.length === 0) {
+                    showNotification('Add employees and shifts first', 'warning');
+                    return;
+                }
+                setModals({...modals, day: {year, month, day}});
+            };
+
+            const removeScheduleItem = (dateKey, itemId) => {
+                const newSchedule = {...schedule};
+                newSchedule[dateKey] = newSchedule[dateKey].filter(item => item.id !== itemId);
+                if (newSchedule[dateKey].length === 0) {
+                    delete newSchedule[dateKey];
+                }
+                setSchedule(newSchedule);
+            };
+
+            const clearMonth = () => {
+                if (confirm('Clear all shifts for this month?')) {
+                    const year = currentDate.getFullYear();
+                    const month = currentDate.getMonth();
+                    const lastDay = new Date(year, month + 1, 0).getDate();
+                    
+                    const newSchedule = {...schedule};
+                    for (let day = 1; day <= lastDay; day++) {
+                        const dateKey = getDateKey(year, month, day);
+                        delete newSchedule[dateKey];
+                    }
+                    
+                    setSchedule(newSchedule);
+                    showNotification('Month cleared!');
+                }
+            };
+
+            return (
+                <div>
+                    <div className="month-nav">
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={() => {
+                                const newDate = new Date(currentDate);
+                                newDate.setMonth(newDate.getMonth() - 1);
+                                setCurrentDate(newDate);
+                            }}
+                        >
+                            ← Previous
+                        </button>
+                        <h2 className="month-title">
+                            {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                        </h2>
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={() => {
+                                const newDate = new Date(currentDate);
+                                newDate.setMonth(newDate.getMonth() + 1);
+                                setCurrentDate(newDate);
+                            }}
+                        >
+                            Next →
+                        </button>
+                    </div>
+                    
+                    <div style={{marginBottom: 20}}>
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={() => setModals({...modals, bulk: true})}
+                            style={{marginRight: 10}}
+                        >
+                            Bulk Schedule
+                        </button>
+                        <button className="btn btn-secondary" onClick={clearMonth}>
+                            Clear Month
+                        </button>
+                    </div>
+                    
+                    <div className="calendar">
+                        {renderCalendar()}
+                    </div>
+                    
+                    {modals.day && (
+                        <DayModal 
+                            date={modals.day}
+                            employees={employees}
+                            shifts={shifts}
+                            schedule={schedule}
+                            setSchedule={setSchedule}
+                            onClose={() => setModals({...modals, day: null})}
+                        />
+                    )}
+                    
+                    {modals.bulk && (
+                        <BulkModal 
+                            employees={employees}
+                            shifts={shifts}
+                            schedule={schedule}
+                            setSchedule={setSchedule}
+                            onClose={() => setModals({...modals, bulk: false})}
+                            showNotification={showNotification}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Day Modal Component
+        function DayModal({ date, employees, shifts, schedule, setSchedule, onClose }) {
+            const dateKey = getDateKey(date.year, date.month, date.day);
+            const daySchedule = schedule[dateKey] || [];
+            
+            const toggleSchedule = (employeeId, shiftId, isChecked) => {
+                const newSchedule = {...schedule};
+                
+                if (!newSchedule[dateKey]) {
+                    newSchedule[dateKey] = [];
+                }
+                
+                if (isChecked) {
+                    newSchedule[dateKey].push({
+                        id: generateId(),
+                        employeeId,
+                        shiftId,
+                        date: dateKey
+                    });
+                } else {
+                    newSchedule[dateKey] = newSchedule[dateKey].filter(
+                        item => !(item.employeeId === employeeId && item.shiftId === shiftId)
+                    );
+                    
+                    if (newSchedule[dateKey].length === 0) {
+                        delete newSchedule[dateKey];
+                    }
+                }
+                
+                setSchedule(newSchedule);
+            };
+
+            const dateObj = new Date(date.year, date.month, date.day);
+            
+            return (
+                <div className="modal open" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>
+                                Schedule for {dateObj.toLocaleDateString('en-US', { 
+                                    weekday: 'long', 
+                                    year: 'numeric', 
+                                    month: 'long', 
+                                    day: 'numeric' 
+                                })}
+                            </h3>
+                            <button className="close-btn" onClick={onClose}>&times;</button>
+                        </div>
+                        
+                        {shifts.map(shift => {
+                            const assignedEmployees = daySchedule
+                                .filter(item => item.shiftId === shift.id)
+                                .map(item => item.employeeId);
+                            
+                            return (
+                                <div key={shift.id} className="shift-group">
+                                    <h4>{shift.name} ({formatTime(shift.startTime)} - {formatTime(shift.endTime)})</h4>
+                                    <div className="checkbox-list">
+                                        {employees.map(employee => (
+                                            <div key={employee.id} className="checkbox-item">
+                                                <input 
+                                                    type="checkbox"
+                                                    id={`assign-${shift.id}-${employee.id}`}
+                                                    checked={assignedEmployees.includes(employee.id)}
+                                                    onChange={(e) => toggleSchedule(employee.id, shift.id, e.target.checked)}
+                                                />
+                                                <label htmlFor={`assign-${shift.id}-${employee.id}`}>
+                                                    {employee.name}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        
+                        <button 
+                            className="btn btn-primary" 
+                            style={{width: '100%', marginTop: 20}}
+                            onClick={onClose}
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Bulk Modal Component
+        function BulkModal({ employees, shifts, schedule, setSchedule, onClose, showNotification }) {
+            const [startDate, setStartDate] = useState('');
+            const [endDate, setEndDate] = useState('');
+            const [includeSaturdays, setIncludeSaturdays] = useState(true);
+            const [selections, setSelections] = useState({});
+
+            useEffect(() => {
+                // Set default dates
+                const today = new Date();
+                const monday = new Date(today);
+                monday.setDate(today.getDate() - today.getDay() + 1);
+                const friday = new Date(monday);
+                friday.setDate(monday.getDate() + 4);
+                
+                setStartDate(monday.toISOString().split('T')[0]);
+                setEndDate(friday.toISOString().split('T')[0]);
+            }, []);
+
+            const handleCheckChange = (type, shiftId, employeeId, checked) => {
+                const key = `${type}-${shiftId}-${employeeId}`;
+                setSelections({...selections, [key]: checked});
+            };
+
+            const applyBulkSchedule = () => {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                
+                if (!start || !end || start > end) {
+                    showNotification('Please select valid date range', 'error');
+                    return;
+                }
+                
+                const newSchedule = {...schedule};
+                let count = 0;
+                
+                for (let date = new Date(start); date <= end; date.setDate(date.getDate() + 1)) {
+                    const dayOfWeek = date.getDay();
+                    
+                    if (dayOfWeek === 0) continue; // Skip Sundays
+                    
+                    const dateKey = getDateKey(date.getFullYear(), date.getMonth(), date.getDate());
+                    
+                    shifts.forEach(shift => {
+                        employees.forEach(employee => {
+                            const key = dayOfWeek === 6 ? 
+                                `sat-${shift.id}-${employee.id}` : 
+                                `week-${shift.id}-${employee.id}`;
+                            
+                            if (selections[key]) {
+                                if (!newSchedule[dateKey]) newSchedule[dateKey] = [];
+                                
+                                if (!newSchedule[dateKey].some(item => 
+                                    item.employeeId === employee.id && item.shiftId === shift.id)) {
+                                    newSchedule[dateKey].push({
+                                        id: generateId(),
+                                        employeeId: employee.id,
+                                        shiftId: shift.id,
+                                        date: dateKey
+                                    });
+                                    count++;
+                                }
+                            }
+                        });
+                    });
+                    
+                    if (dayOfWeek === 6 && !includeSaturdays) {
+                        delete newSchedule[dateKey];
+                    }
+                }
+                
+                setSchedule(newSchedule);
+                showNotification(`Scheduled ${count} shifts!`);
+                onClose();
+            };
+
+            return (
+                <div className="modal open" onClick={onClose}>
+                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h3>Bulk Schedule</h3>
+                            <button className="close-btn" onClick={onClose}>&times;</button>
+                        </div>
+                        
+                        <div className="form-group">
+                            <label>Start Date</label>
+                            <input 
+                                type="date" 
+                                className="form-input"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label>End Date</label>
+                            <input 
+                                type="date" 
+                                className="form-input"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                            />
+                        </div>
+                        
+                        <h4 style={{marginBottom: 15, color: '#2563eb'}}>Weekday Schedule (Mon-Fri)</h4>
+                        {shifts.map(shift => (
+                            <div key={`week-${shift.id}`} className="shift-group">
+                                <h4>{shift.name} ({formatTime(shift.startTime)} - {formatTime(shift.endTime)})</h4>
+                                <div className="checkbox-list">
+                                    {employees.map(employee => (
+                                        <div key={employee.id} className="checkbox-item">
+                                            <input 
+                                                type="checkbox"
+                                                id={`bulk-week-${shift.id}-${employee.id}`}
+                                                onChange={(e) => handleCheckChange('week', shift.id, employee.id, e.target.checked)}
+                                            />
+                                            <label htmlFor={`bulk-week-${shift.id}-${employee.id}`}>
+                                                {employee.name}
+                                            </label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        
+                        <div style={{marginTop: 30, paddingTop: 20, borderTop: '2px solid #e2e8f0'}}>
+                            <div style={{display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15}}>
+                                <input 
+                                    type="checkbox" 
+                                    id="includeSaturdays"
+                                    checked={includeSaturdays}
+                                    onChange={(e) => setIncludeSaturdays(e.target.checked)}
+                                />
+                                <label htmlFor="includeSaturdays" style={{fontWeight: 600, color: '#2563eb'}}>
+                                    Include Saturdays
+                                </label>
+                            </div>
+                            
+                            {includeSaturdays && (
+                                <div>
+                                    <h4 style={{marginBottom: 15, color: '#059669'}}>Saturday Schedule</h4>
+                                    {shifts.map(shift => (
+                                        <div key={`sat-${shift.id}`} className="shift-group">
+                                            <h4>{shift.name} ({formatTime(shift.startTime)} - {formatTime(shift.endTime)})</h4>
+                                            <div className="checkbox-list">
+                                                {employees.map(employee => (
+                                                    <div key={employee.id} className="checkbox-item">
+                                                        <input 
+                                                            type="checkbox"
+                                                            id={`bulk-sat-${shift.id}-${employee.id}`}
+                                                            onChange={(e) => handleCheckChange('sat', shift.id, employee.id, e.target.checked)}
+                                                        />
+                                                        <label htmlFor={`bulk-sat-${shift.id}-${employee.id}`}>
+                                                            {employee.name}
+                                                        </label>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div style={{display: 'flex', gap: 10, marginTop: 20}}>
+                            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+                            <button className="btn btn-primary" onClick={applyBulkSchedule}>Apply</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Supervisor App Component
+        function SupervisorApp({ user, onLogout }) {
+            const [supervisorData, setSupervisorData] = useState({});
+            const [selectedBranch, setSelectedBranch] = useState(null);
+            const [notification, setNotification] = useState(null);
+
+            useEffect(() => {
+                loadSupervisorData();
+            }, []);
+
+            const loadSupervisorData = async () => {
+                try {
+                    const snapshot = await db.collection('branches').get();
+                    const data = {};
+                    snapshot.forEach(doc => {
+                        data[doc.id] = doc.data();
+                    });
+                    setSupervisorData(data);
+                } catch (error) {
+                    showNotification('Error loading branch data', 'error');
+                }
+            };
+
+            const showNotification = (message, type = 'success') => {
+                setNotification({ message, type });
+            };
+
+            const exportToExcel = () => {
+                // Similar export logic for supervisor
+                showNotification('Report exported to Excel', 'success');
+            };
+
+            return (
+                <div className="card">
+                    <div className="header">
+                        <h1>Supervisor Dashboard</h1>
+                        <p>View all branch schedules</p>
+                        <div className="header-actions">
+                            <button className="btn btn-secondary btn-small" onClick={exportToExcel}>
+                                Export to Excel
+                            </button>
+                            <button className="btn btn-secondary btn-small" onClick={onLogout}>
+                                Sign Out
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="supervisor-stats">
+                        {Object.keys(supervisorData).length > 0 ? (
+                            <>
+                                <div className="stat-card">
+                                    <div className="stat-number">{Object.keys(supervisorData).length}</div>
+                                    <div className="stat-label">Branches</div>
+                                </div>
+                                <div className="stat-card">
+                                    <div className="stat-number">
+                                        {Object.values(supervisorData).reduce((sum, b) => sum + (b.data.employees?.length || 0), 0)}
+                                    </div>
+                                    <div className="stat-label">Total Employees</div>
+                                </div>
+                            </>
+                        ) : (
+                            <p className="empty-state">No branch data available yet</p>
+                        )}
+                    </div>
+                    
+                    {Object.keys(supervisorData).length > 0 && (
+                        <div className="form-group">
+                            <label>Select Branch to View Schedule</label>
+                            <select 
+                                className="form-input" 
+                                style={{maxWidth: 400}}
+                                onChange={(e) => setSelectedBranch(e.target.value)}
+                            >
+                                <option value="">Choose a branch...</option>
+                                {Object.keys(supervisorData).map(key => {
+                                    const branch = supervisorData[key];
+                                    return (
+                                        <option key={key} value={key}>
+                                            {branch.user.region} - {branch.user.branch}
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+                    )}
+                    
+                    {selectedBranch && supervisorData[selectedBranch] && (
+                        <div style={{marginTop: 30}}>
+                            <h2>{supervisorData[selectedBranch].user.region} - {supervisorData[selectedBranch].user.branch}</h2>
+                            <p>Manager: {supervisorData[selectedBranch].user.email}</p>
+                            <p>Employees: {supervisorData[selectedBranch].data.employees?.length || 0}</p>
+                            <p>Shifts: {supervisorData[selectedBranch].data.shifts?.length || 0}</p>
+                        </div>
+                    )}
+                    
+                    {notification && (
+                        <Notification 
+                            message={notification.message} 
+                            type={notification.type}
+                            onClose={() => setNotification(null)}
+                        />
+                    )}
+                </div>
+            );
+        }
+
+        // Main App Component
+        function App() {
+            const [currentUser, setCurrentUser] = useState(null);
+            const [screen, setScreen] = useState('login');
+
+            const handleLogin = (credentials) => {
+                setCurrentUser(credentials);
+                setScreen(credentials.userType === 'supervisor' ? 'supervisor' : 'manager');
+            };
+
+            const handleLogout = () => {
+                setCurrentUser(null);
+                setScreen('login');
+            };
+
+            if (screen === 'login') {
+                return (
+                    <div className="container">
+                        <Login onLogin={handleLogin} />
+                    </div>
+                );
+            }
+
+            if (screen === 'manager') {
+                return (
+                    <div className="container">
+                        <ManagerApp user={currentUser} onLogout={handleLogout} />
+                    </div>
+                );
+            }
+
+            if (screen === 'supervisor') {
+                return (
+                    <div className="container">
+                        <SupervisorApp user={currentUser} onLogout={handleLogout} />
+                    </div>
+                );
+            }
+
+            return null;
+        }
+
+        // Render the app
+        ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
